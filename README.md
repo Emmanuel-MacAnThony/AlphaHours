@@ -30,7 +30,7 @@ A timesheet app for TrueLions' hourly contractors on Alpha City. It runs on your
 
 ## Deploy (for the engineer)
 
-Needs Node.js 20, the Firebase CLI and the gcloud CLI.
+Needs Node.js 22, the Firebase CLI and the gcloud CLI.
 
 1. **Create the Firebase project.** In https://console.firebase.google.com, choose Add project (or add Firebase to the existing TrueLions Google Cloud project), then upgrade it to **Blaze**.
 2. **Turn on the services in the console:**
