@@ -1,0 +1,19 @@
+rules_version = '2';
+// Proof-of-work files: each person uploads into their own folder.
+// Allowed: images, PDF, video, plain text and CSV, up to 20 MB.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function onTeam() {
+      return request.auth != null && (
+        firestore.exists(/databases/(default)/documents/members/$(request.auth.token.email.lower())) ||
+        firestore.exists(/databases/(default)/documents/managers/$(request.auth.token.email.lower())));
+    }
+    match /proofs/{uid}/{file} {
+      allow read: if onTeam();
+      allow create: if onTeam() && request.auth.uid == uid
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|application/pdf|video/.*|text/plain|text/csv');
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

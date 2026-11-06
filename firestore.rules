@@ -1,0 +1,60 @@
+rules_version = '2';
+// Who can do what:
+//   managers/<email>  exists  -> manager (Mary Jane, Bradford): sees and edits everything, incl. pay
+//   members/<email>   exists  -> contractor: sees team names, logs and edits only their own hours
+// Pay and salaries are readable by managers only.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
+    function myEmail() { return request.auth.token.email.lower(); }
+    function isManager() { return signedIn() && exists(/databases/$(database)/documents/managers/$(myEmail())); }
+    function isMember() { return signedIn() && exists(/databases/$(database)/documents/members/$(myEmail())); }
+    function myCid() { return get(/databases/$(database)/documents/members/$(myEmail())).data.contractorId; }
+
+    // Managers are added with scripts/seed.mjs or in the Firebase console, never from the app.
+    match /managers/{email} {
+      allow read: if signedIn() && (email == myEmail() || isManager());
+      allow write: if false;
+    }
+    match /members/{email} {
+      allow read: if signedIn() && (email == myEmail() || isManager());
+      allow write: if isManager();
+    }
+    match /roster/{id} {
+      allow read: if isManager() || isMember();
+      allow write: if isManager();
+    }
+    match /pay/{id} {
+      allow read, write: if isManager();
+    }
+    match /settings/{id} {
+      allow read: if isManager() || isMember();
+      allow write: if isManager();
+    }
+    // AI scores are written by the server only. Contractors see their own; managers see all.
+    match /scores/{id} {
+      allow read: if isManager() || (isMember() && resource.data.contractorId == myCid());
+      allow write: if false;
+    }
+    // Server-only data (ChatGPT sign-in codes and tokens, Slack import state).
+    match /oauthCodes/{id} { allow read, write: if false; }
+    match /oauthTokens/{id} { allow read, write: if false; }
+    match /oauthRefresh/{id} { allow read, write: if false; }
+    match /slackState/{id} { allow read, write: if false; }
+
+    match /entries/{id} {
+      allow read: if isManager() || (isMember() && resource.data.contractorId == myCid());
+      allow create: if isManager()
+        || (isMember() && request.resource.data.contractorId == myCid() && request.resource.data.status == 'draft');
+      // Contractors may edit drafts and returned entries, and submit them; only managers approve or return.
+      allow update: if isManager()
+        || (isMember()
+            && resource.data.contractorId == myCid()
+            && request.resource.data.contractorId == myCid()
+            && resource.data.status in ['draft', 'rejected']
+            && request.resource.data.status in ['draft', 'submitted']);
+      allow delete: if isManager()
+        || (isMember() && resource.data.contractorId == myCid() && resource.data.status in ['draft', 'rejected']);
+    }
+  }
+}

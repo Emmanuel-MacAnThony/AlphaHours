@@ -1,0 +1,7 @@
+{
+  "indexes": [
+    { "collectionGroup": "entries", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "contractorId", "order": "ASCENDING" }, { "fieldPath": "date", "order": "ASCENDING" } ] }
+  ],
+  "fieldOverrides": []
+}

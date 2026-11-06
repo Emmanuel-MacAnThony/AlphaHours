@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="en">
+<title>Alpha City Hours Tracker</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script type="module" src="firebase-backend.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one working column, header with month + person, tabbed work areas, summary strip before detail */
+:root {
+  --bg: #f6f7f4; --surface: #ffffff; --sunk: #eef1ec; --line: #dbe0d8;
+  --fg: #18211c; --muted: #5b675f; --accent: #1f6b4a; --accent-ink: #ffffff; --accent-soft: #e2efe8;
+  --good: #1f7a46; --good-soft: #e3f3e8; --warn: #9a5b00; --warn-soft: #fbefd9; --bad: #b3261e; --bad-soft: #fbe5e3; --info-soft: #e7ecf7; --info: #2f4f8f;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111613; --surface: #18201b; --sunk: #1e2822; --line: #2c3730; --fg: #e6ece7; --muted: #9aa89e;
+  --accent: #5cc493; --accent-ink: #0d1a13; --accent-soft: #1f3a2c; --good: #6fd39a; --good-soft: #193526; --warn: #f0b552; --warn-soft: #3a2c14;
+  --bad: #f2877e; --bad-soft: #3d1c1a; --info-soft: #1d2840; --info: #9db6ec; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #111613; --surface: #18201b; --sunk: #1e2822; --line: #2c3730; --fg: #e6ece7; --muted: #9aa89e;
+  --accent: #5cc493; --accent-ink: #0d1a13; --accent-soft: #1f3a2c; --good: #6fd39a; --good-soft: #193526; --warn: #f0b552; --warn-soft: #3a2c14;
+  --bad: #f2877e; --bad-soft: #3d1c1a; --info-soft: #1d2840; --info: #9db6ec; color-scheme: dark }
+* { box-sizing: border-box }
+html { color-scheme: light } body { margin: 0; font-size: 14px } img { max-width: 100% } [hidden] { display: none !important }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px) }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 14.5px; line-height: 1.5; }
+.wrap { max-width: 1080px; margin: 0 auto; padding-block: 20px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 18px; }
+h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; letter-spacing: -0.01em }
+h1 { font-size: 26px } h2 { font-size: 19px } h3 { font-size: 15.5px }
+.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px }
+.top p { margin: 2px 0 0; color: var(--muted) }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end }
+label.f { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em }
+input, select, textarea { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0 }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+button { font: inherit; font-weight: 600; border-radius: 8px; padding: 8px 14px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) }
+button.ok { color: var(--good); border-color: var(--good) }
+button.no { color: var(--bad); border-color: var(--bad) }
+button.small { padding: 4px 10px; font-size: 13px }
+button:disabled { opacity: .5; cursor: not-allowed }
+.banner { background: var(--info-soft); color: var(--fg); border-radius: var(--r); padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between }
+.banner.demo { background: var(--warn-soft) }
+nav.tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line) }
+nav.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); padding: 10px 12px; white-space: nowrap }
+nav.tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent) }
+.count { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 4px; border-radius: 10px; background: var(--sunk); font-size: 12px; text-align: center }
+.count.hot { background: var(--bad-soft); color: var(--bad) }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px }
+.stat .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600 }
+.stat .v { font-family: var(--display); font-size: 24px; font-variant-numeric: tabular-nums }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 12px; min-width: 0 }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: end }
+.form-grid .wide { grid-column: span 2 }
+@media (max-width: 520px) { .form-grid .wide { grid-column: auto } }
+.tbl { overflow-x: auto }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top }
+th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600 }
+td.num, th.num { text-align: right }
+tfoot th, tfoot td { font-size: 14.5px; text-transform: none; letter-spacing: 0; color: var(--fg); font-weight: 600 }
+main { display: grid; gap: 14px; min-width: 0 }
+.pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap }
+.p-draft { background: var(--sunk); color: var(--muted) }
+.p-submitted { background: var(--info-soft); color: var(--info) }
+.p-approved { background: var(--good-soft); color: var(--good) }
+.p-rejected { background: var(--bad-soft); color: var(--bad) }
+.p-warn { background: var(--warn-soft); color: var(--warn) }
+.week { display: grid; gap: 8px; padding-top: 6px }
+.week-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between }
+.muted { color: var(--muted) }
+.row-actions { display: flex; gap: 6px; flex-wrap: wrap }
+.flag { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid var(--line) }
+.flag:last-child { border-bottom: 0 }
+.empty { padding: 22px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: var(--r) }
+.invoice { border: 1px solid var(--line); border-radius: var(--r); padding: 20px; display: grid; gap: 14px; background: var(--surface) }
+.invoice .ih { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px }
+.reject-box { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px }
+.reject-box input { flex: 1 1 200px }
+#toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-weight: 600; z-index: 20 }
+@media (prefers-reduced-motion: no-preference) { #toast { transition: opacity .2s } }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; align-self: end }
+.seg button { border: 0; border-radius: 0; background: var(--surface); color: var(--muted) }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink) }
+.day-form { display: grid; gap: 10px }
+.trow { display: grid; grid-template-columns: 110px 110px minmax(140px, 1fr) minmax(200px, 2fr) 90px auto; gap: 8px; align-items: end; padding-bottom: 10px; border-bottom: 1px dashed var(--line) }
+.trow-h { display: flex; gap: 8px; align-items: center; padding-bottom: 8px; font-variant-numeric: tabular-nums; white-space: nowrap }
+@media (max-width: 720px) { .trow { grid-template-columns: 1fr 1fr } .trow .task { grid-column: 1 / -1 } }
+tr.dayrow th { background: var(--sunk); color: var(--fg); text-transform: none; letter-spacing: 0; font-size: 13.5px }
+td.time { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted) }
+.trow .proof { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; align-items: end }
+.trow .proof label.f { flex: 1 1 320px }
+.filebtn { position: relative; font-weight: 600; font-size: 13px; border: 1px solid var(--accent); color: var(--accent); border-radius: 8px; padding: 8px 12px; cursor: pointer; white-space: nowrap }
+.filebtn input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer }
+.filebtn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px }
+.chips { display: flex; flex-wrap: wrap; gap: 6px }
+.chip { display: inline-flex; align-items: center; gap: 4px; background: var(--accent-soft); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 12.5px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.chip button { border: 0; background: none; padding: 0 6px; font-size: 15px; line-height: 1; color: var(--muted) }
+.proof-view { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px }
+.proof-link { color: var(--accent); font-weight: 600 }
+img.thumb { width: 56px; height: 40px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); display: block }
+.who { display: inline-flex; gap: 8px; align-items: center; align-self: end; padding-bottom: 6px }
+.signin { max-width: 520px }
+.meta { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--muted); margin-top: 2px }
+.fb { font-size: 12.5px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); margin-top: 2px; max-width: 520px }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Alpha City Hours Tracker</h1>
+      <p id="subtitle">Hourly contractor timesheets</p>
+    </div>
+    <div class="controls">
+      <div id="viewswitch" class="seg" hidden role="group" aria-label="View">
+        <button type="button" data-action="mode" data-mode="manager">Manager view</button>
+        <button type="button" data-action="mode" data-mode="contractor">Contractor view</button>
+      </div>
+      <label class="f" for="month">Month<input type="month" id="month"></label>
+      <label class="f" for="me" id="me-wrap">Logging for<select id="me"></select></label>
+      <span class="who"><span id="who" class="muted"></span><button type="button" id="signout" class="small" hidden>Sign out</button></span>
+    </div>
+  </header>
+
+  <div id="banner"></div>
+
+  <nav class="tabs" role="tablist" id="tabs"></nav>
+
+  <main id="view"></main>
+</div>
+<div id="toast" hidden></div>
+
+<script>
+(() => {
+  // ---------- state ----------
+  // Data model: roster (names, readable by all) · pay (salary + rate, managers only) · entries (hours) · settings/main
+  const S = {
+    db: null, backend: null, authUser: null, myCid: null, needSignIn: false, notMember: false, isManager: false,
+    demo: false, loaded: false, offline: false, mode: 'contractor',
+    roster: [], pay: [], entries: [], settings: { hoursPerWeek: 50, weeksPerMonth: 4 },
+    tab: 'approve', month: '', me: '', editingEntry: null, draft: null, scores: [], assets: null, uploading: 0, rejecting: null, invoiceFor: null, editingContractor: null,
+  };
+  const demoStore = { roster: [], pay: [], entries: [], scores: [], settings: { hoursPerWeek: 50, weeksPerMonth: 4 } };
+  let unsubEntries = null;
+
+  // ---------- utils ----------
+  const $ = s => document.querySelector(s);
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const usd = n => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
+  const hrs = n => (Math.round((n || 0) * 100) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  const todayWAT = () => new Date(Date.now() + 3600e3).toISOString().slice(0, 10);
+  const addDays = (d, n) => { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+  const dow = d => new Date(d + 'T00:00:00Z').getUTCDay();
+  const weekStart = d => addDays(d, -((dow(d) + 6) % 7));
+  const dueFor = ws => new Date(addDays(ws, 7) + 'T11:00:00Z'); // following Monday 12:00 WAT
+  const fmtDay = d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const fmtMonth = m => new Date(m + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const monthEnd = m => { const [y, mo] = m.split('-').map(Number); return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10); };
+  const workDays = (a, b) => { let n = 0; for (let d = a; d <= b; d = addDays(d, 1)) if (dow(d) % 6 !== 0) n++; return n; };
+  const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  const toast = msg => { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 2800); };
+  const store = () => S.demo ? demoStore : S;
+  const settings = () => ({ hoursPerWeek: 50, weeksPerMonth: 4, ...store().settings });
+  const monthlyHours = () => settings().hoursPerWeek * settings().weeksPerMonth;
+  const rateFor = salary => salary ? Math.round(salary / monthlyHours() * 100) / 100 : 0;
+  const manager = () => S.mode === 'manager' && (S.isManager || S.demo);
+  // a contractor record = roster row + (for managers) pay row
+  const people = () => store().roster.map(r => ({ ...r, ...(store().pay.find(p => p.id === r.id) || {}), id: r.id })).sort((a, b) => (a.code || 0) - (b.code || 0));
+  const byId = id => people().find(c => c.id === id);
+  const expectedOf = c => c.expectedHours || monthlyHours();
+  const monthEntries = () => store().entries.filter(e => e.month === S.month);
+  try { S.me = localStorage.getItem('tl-me') || ''; S.tab = localStorage.getItem('tl-tab') || 'approve'; } catch (e) {}
+
+  // ---------- writes (shared store, or memory in the sample preview) ----------
+  async function put(coll, id, data) {
+    if (S.demo) {
+      const arr = demoStore[coll]; if (!arr) { demoStore[coll] = data; render(); return true; }
+      const i = arr.findIndex(x => x.id === id);
+      if (i >= 0) arr[i] = { ...arr[i], ...data }; else arr.push({ id, ...data });
+      render(); return true;
+    }
+    if (!S.db) { toast('Sign in to save your work.'); return false; }
+    try { await S.db.doc(`${coll}/${id}`).set(data); return true; } catch (err) { writeError(err); return false; }
+  }
+  async function patch(coll, id, data) {
+    if (S.demo) return put(coll, id, data);
+    if (!S.db) return false;
+    try { await S.db.doc(`${coll}/${id}`).update(data); return true; } catch (err) { writeError(err); return false; }
+  }
+  async function remove(coll, id) {
+    if (S.demo) { demoStore[coll] = demoStore[coll].filter(x => x.id !== id); render(); return true; }
+    if (!S.db) return false;
+    try { await S.db.doc(`${coll}/${id}`).delete(); return true; } catch (err) { writeError(err); return false; }
+  }
+  function writeError(err) {
+    if (err && (err.code === 'invalid_argument' || err.code === 'permission-denied')) toast('You don’t have permission to change this. Ask a manager for access.');
+    else if (err && err.code === 'quota_exceeded') toast('The tracker’s storage is full.');
+    else toast('Couldn’t save. Check your connection and try again.');
+  }
+
+  // ---------- flags ----------
+  function computeFlags() {
+    const flags = []; const m = S.month; const today = todayWAT(); const mEnd = monthEnd(m); const mStart = m + '-01';
+    const live = monthEntries().filter(e => e.status !== 'rejected');
+    for (const c of people().filter(c => c.active !== false)) {
+      const start = c.startDate && c.startDate > mStart ? c.startDate : mStart;
+      const mine = live.filter(e => e.contractorId === c.id);
+      const total = mine.reduce((s, e) => s + Number(e.hours || 0), 0);
+      if (c.capHours && total > c.capHours) flags.push({ c, sev: 'bad', type: 'Over cap', text: `${hrs(total)} h logged against a ${c.capHours} h monthly cap.` });
+      const perDay = {}; mine.forEach(e => perDay[e.date] = (perDay[e.date] || 0) + Number(e.hours || 0));
+      Object.entries(perDay).filter(([, h]) => h > 10).forEach(([d, h]) => flags.push({ c, sev: 'warn', type: 'Long day', text: `${hrs(h)} h on ${fmtDay(d)}.` }));
+      const weeks = {}; mine.forEach(e => { const w = weekStart(e.date); weeks[w] = weeks[w] || { all: 0, we: 0 }; weeks[w].all += Number(e.hours); if (dow(e.date) % 6 === 0) weeks[w].we += Number(e.hours); });
+      Object.entries(weeks).filter(([, v]) => v.all > 0 && v.we / v.all > 0.25).forEach(([w, v]) => flags.push({ c, sev: 'warn', type: 'Weekend spike', text: `${Math.round(v.we / v.all * 100)}% of the week of ${fmtDay(w)} was logged on Sat/Sun.` }));
+      mine.filter(e => !hasProof(e)).forEach(e => flags.push({ c, sev: 'warn', type: 'No proof', text: `${timeLabel(e)} on ${fmtDay(e.date)} (“${e.task || '(blank)'}”) has no proof of work.` }));
+      mine.filter(e => (e.task || '').trim().length < 10).forEach(e => flags.push({ c, sev: 'info', type: 'Vague entry', text: `“${e.task || '(blank)'}” on ${fmtDay(e.date)}. Ask what was done.` }));
+      const late = new Set(); mine.filter(e => e.submittedAt && new Date(e.submittedAt) > dueFor(weekStart(e.date))).forEach(e => late.add(weekStart(e.date)));
+      late.forEach(w => flags.push({ c, sev: 'warn', type: 'Late', text: `Week of ${fmtDay(w)} was submitted after Monday 12:00 WAT.` }));
+      if (today >= start) {
+        const upTo = today < mEnd ? today : mEnd;
+        const last = mine.map(e => e.date).sort().pop();
+        const since = last ? workDays(addDays(last, 1), upTo) : workDays(start, upTo);
+        if (since >= 5) flags.push({ c, sev: 'bad', type: 'Silent', text: last ? `Nothing logged for ${since} working days (last entry ${fmtDay(last)}).` : `No hours logged yet this month (${since} working days so far).` });
+        const elapsed = workDays(start, upTo), totalWd = workDays(start, mEnd);
+        if (S.isManager || S.demo) if (elapsed >= 5) {
+          const target = expectedOf(c) * elapsed / workDays(mStart, mEnd);
+          if (total < target * 0.5) flags.push({ c, sev: 'info', type: 'Under-used', text: `${hrs(total)} h so far against about ${hrs(target)} h expected by now (${settings().hoursPerWeek} h a week).` });
+        }
+      }
+    }
+    const order = { bad: 0, warn: 1, info: 2 };
+    return flags.sort((a, b) => order[a.sev] - order[b.sev]);
+  }
+
+  // ---------- render ----------
+  const TABS_M = [['approve', 'Approvals'], ['scores', 'AI scores'], ['flags', 'Flags'], ['pay', 'Pay'], ['team', 'Team & rates'], ['log', 'Log hours']];
+  const TABS_C = [['log', 'My hours']];
+
+  const softRender = () => { if (document.activeElement && document.activeElement.closest && document.activeElement.closest('#view form')) { S.pending = true; return; } render(); };
+  function render() {
+    const isM = manager();
+    $('#viewswitch').hidden = !(S.isManager || S.demo);
+    document.querySelectorAll('#viewswitch button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === S.mode)));
+    $('#subtitle').textContent = isM ? 'Manager view · timesheets, approvals, flags and pay' : 'Log your hours and submit them each week';
+    $('#me-wrap').hidden = isM && S.tab !== 'log';
+    if (!isM) S.tab = 'log';
+    $('#who').textContent = S.authUser && !S.demo ? S.authUser.email : '';
+    $('#signout').hidden = !(S.authUser && !S.demo);
+    if (!S.demo && (S.needSignIn || S.notMember)) {
+      $('#viewswitch').hidden = true; $('#me-wrap').hidden = true; $('#tabs').innerHTML = ''; renderBanner();
+      $('#view').innerHTML = S.needSignIn
+        ? `<section class="panel signin"><h2>Sign in</h2><p class="muted">Use your work Google account to log your hours.</p><span class="row-actions"><button class="primary" data-action="signin">Sign in with Google</button><button data-action="demo-on">Preview with sample data</button></span></section>`
+        : `<section class="panel signin"><h2>You’re not on the team list yet</h2><p class="muted">${esc(S.authUser?.email)} isn’t set up in the tracker. Ask Mary Jane or Bradford to add this email in Team &amp; rates, then reload.</p><span class="row-actions"><button data-action="signout">Sign out</button></span></section>`;
+      return;
+    }
+    if (!isM && !S.demo && S.myCid) S.me = S.myCid;
+    if (!isM && !S.demo && !S.isManager) $('#me-wrap').hidden = true;
+    renderPeoplePicker(); renderBanner();
+    const pending = monthEntries().filter(e => e.status === 'submitted').length;
+    const flags = isM ? computeFlags() : [];
+    const tabs = isM ? TABS_M : TABS_C;
+    $('#tabs').innerHTML = tabs.map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${k === S.tab}">${esc(l)}${k === 'approve' ? ` <span class="count${pending ? ' hot' : ''}">${pending}</span>` : ''}${k === 'flags' ? ` <span class="count${flags.some(f => f.sev === 'bad') ? ' hot' : ''}">${flags.length}</span>` : ''}</button>`).join('');
+    const v = $('#view');
+    if (!S.loaded && !S.demo) { v.innerHTML = `<div class="empty">Loading timesheets…</div>`; return; }
+    v.innerHTML = ({ log: viewLog, approve: viewApprove, flags: () => viewFlags(flags), scores: viewScores, pay: viewPay, team: viewTeam })[S.tab]();
+  }
+
+  function renderPeoplePicker() {
+    const sel = $('#me'); const list = people().filter(c => c.active !== false);
+    const html = ['<option value="">Choose your name</option>'].concat(list.map(c => `<option value="${esc(c.id)}"${c.id === S.me ? ' selected' : ''}>${esc(c.name)}</option>`)).join('');
+    if (sel._last !== html) { sel.innerHTML = html; sel._last = html; }
+  }
+
+  function renderBanner() {
+    const b = $('#banner');
+    if (S.demo) { b.innerHTML = `<div class="banner demo"><span><strong>Sample preview.</strong> These people and hours are made up so you can try both views. Nothing here is saved.</span><button data-action="demo-off">Leave preview</button></div>`; return; }
+    if (S.offline) { b.innerHTML = `<div class="banner"><span>This app isn’t connected to Firebase yet. Deploy it with Firebase Hosting (see README), or try the sample preview.</span><button data-action="demo-on">Preview with sample data</button></div>`; return; }
+    if (S.loaded && !S.roster.length) { b.innerHTML = `<div class="banner"><span><strong>No contractors yet.</strong>${S.isManager ? ' Add your hourly team in Team &amp; rates.' : ' Your manager hasn’t added the team yet.'}</span>${S.isManager ? '<button class="primary" data-action="tab" data-tab="team">Add contractors</button>' : ''}</div>`; return; }
+    if (manager() && S.loaded) {
+      const missing = people().filter(c => c.active !== false && !c.salary);
+      if (missing.length) { b.innerHTML = `<div class="banner"><span><strong>Rates missing:</strong> add the monthly salary for ${missing.map(c => esc(c.name)).join(', ')} in Team &amp; rates. Pay shows $0 until then.</span><button data-action="tab" data-tab="team">Open Team &amp; rates</button></div>`; return; }
+    }
+    b.innerHTML = '';
+  }
+
+  const pill = s => `<span class="pill p-${s}">${{ draft: 'Draft', submitted: 'Awaiting approval', approved: 'Approved', rejected: 'Returned' }[s] || s}</span>`;
+  const projectsDatalist = () => `<datalist id="projects">${[...new Set(store().entries.map(e => e.project).filter(Boolean))].sort().map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
+
+  // ---------- day sheet (several tasks per day, each with start and end time) ----------
+  const toMin = t => { if (!t) return null; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+  const spanH = (s, e) => { const a = toMin(s), b = toMin(e); return a == null || b == null || b <= a ? 0 : Math.round((b - a) / 60 * 100) / 100; };
+  const timeLabel = e => e.start && e.end ? `${e.start}–${e.end}` : '–';
+  const blankRow = prev => ({ id: null, start: prev?.end || '', end: '', project: prev?.project || '', task: '', outputs: '', proofLink: '', proofFiles: [] });
+  const isUrl = u => /^https?:\/\/\S+\.\S+/i.test((u || '').trim());
+  const fileUrl = f => f.url || ('/_blob/' + encodeURIComponent(f.id));
+  const hasProof = e => isUrl(e.proofLink) || (e.proofFiles || []).length > 0;
+  function proofHtml(e) {
+    const parts = [];
+    if (isUrl(e.proofLink)) parts.push(`<a class="proof-link" href="${esc(e.proofLink.trim())}" target="_blank" rel="noopener noreferrer">Open link ↗</a>`);
+    (e.proofFiles || []).forEach(f => parts.push((f.type || '').startsWith('image/')
+      ? `<a href="${esc(fileUrl(f))}" target="_blank" rel="noopener" title="${esc(f.name)}"><img class="thumb" src="${esc(fileUrl(f))}" alt="Proof: ${esc(f.name)}"></a>`
+      : `<a class="proof-link" href="${esc(fileUrl(f))}" target="_blank" rel="noopener">${esc(f.name || 'File')} ↗</a>`));
+    return `<div class="proof-view"><span class="muted">Proof:</span> ${parts.length ? parts.join(' ') : '<span class="pill p-rejected">No proof</span>'}</div>`;
+  }
+  const metaHtml = e => `<div class="meta">${e.outputs != null && e.outputs !== '' ? `<span>${esc(e.outputs)} output${Number(e.outputs) === 1 ? '' : 's'}${e.outputType ? ' · ' + esc(e.outputType) : ''}</span>` : ''}${e.source === 'chatgpt' ? '<span class="pill p-submitted">From ChatGPT</span>' : e.source === 'slack' ? '<span class="pill p-submitted">From Slack</span>' : ''}</div>`;
+  const scoreOf = (cid, date) => store().scores.find(x => x.contractorId === cid && x.date === date);
+  const scorePill = sc => !sc ? '' : sc.score == null ? '<span class="pill p-draft">Not scored yet</span>' : `<span class="pill ${sc.score >= 4 ? 'p-approved' : sc.score >= 3 ? 'p-submitted' : 'p-rejected'}">Score ${sc.score}/5</span>${sc.recommendation === 'approve' ? ' <span class="pill p-approved">Recommended to approve</span>' : ' <span class="pill p-warn">Review</span>'}`;
+  async function attachFiles(i, files) {
+    const r = ensureDraft().rows.at(i); if (!r) return;
+    for (const file of files) {
+      if (S.demo) { r.proofFiles.push({ url: URL.createObjectURL(file), name: file.name || 'Screenshot', type: file.type }); continue; }
+      if (!S.assets) { toast('Sign in to upload files.'); return; }
+      S.uploading++; render();
+      try { const res = await S.assets.upload(file); r.proofFiles.push({ id: res.id, url: res.url, name: file.name || 'Screenshot', type: res.contentType || file.type }); }
+      catch (err) {
+        const c = err && err.code;
+        toast(c === 'unsupported_type' ? 'That file type can’t be uploaded. Use an image, PDF or video, or paste a link.' : /large|size/.test(String(c)) ? 'That file is over 20 MB. Upload a smaller file or paste a link.' : 'Upload failed. Try again, or paste a link.');
+      } finally { S.uploading--; }
+    }
+    render();
+  }
+  function ensureDraft() { if (!S.draft) S.draft = { date: todayWAT(), rows: [blankRow(), blankRow()] }; return S.draft; }
+
+  function viewLog() {
+    const me = byId(S.me);
+    if (!me) return `<section class="panel"><h2>Log hours</h2><div class="empty">Choose your name at the top to see and log your hours.</div></section>`;
+    const dr = ensureDraft();
+    const mine = monthEntries().filter(e => e.contractorId === me.id);
+    const total = mine.filter(e => e.status !== 'rejected').reduce((s, e) => s + Number(e.hours), 0);
+    const approved = mine.filter(e => e.status === 'approved').reduce((s, e) => s + Number(e.hours), 0);
+    const thisWeek = mine.filter(e => weekStart(e.date) === weekStart(todayWAT()) && e.status !== 'rejected').reduce((s, e) => s + Number(e.hours), 0);
+    const dayTotal = dr.rows.reduce((s, r) => s + spanH(r.start, r.end), 0);
+    const already = mine.filter(e => e.date === dr.date && e.status !== 'rejected' && !dr.rows.some(r => r.id === e.id)).reduce((s, e) => s + Number(e.hours), 0);
+    const weeks = {}; mine.forEach(e => (weeks[weekStart(e.date)] = weeks[weekStart(e.date)] || []).push(e));
+    const weekHtml = Object.keys(weeks).sort().reverse().map(w => {
+      const list = weeks[w]; const wt = list.filter(e => e.status !== 'rejected').reduce((s, e) => s + Number(e.hours), 0);
+      const canSubmit = list.some(e => e.status === 'draft');
+      const days = {}; list.forEach(e => (days[e.date] = days[e.date] || []).push(e));
+      const body = Object.keys(days).sort().reverse().map(d => {
+        const de = days[d].sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+        const dt = de.filter(e => e.status !== 'rejected').reduce((s, e) => s + Number(e.hours), 0);
+        return `<tr class="dayrow"><th colspan="4">${fmtDay(d)}</th><th class="num">${hrs(dt)} h</th><th colspan="2"></th></tr>` + de.map(e => `<tr><td class="time">${timeLabel(e)}</td><td>${esc(e.project)}</td><td colspan="2">${esc(e.task)}${proofHtml(e)}${metaHtml(e)}${e.status === 'rejected' && e.reason ? `<div class="muted">Returned: ${esc(e.reason)}</div>` : ''}</td><td class="num">${hrs(e.hours)}</td><td>${pill(e.status)}</td>
+          <td><span class="row-actions">${e.status === 'draft' || e.status === 'rejected' ? `<button class="small" data-action="edit-entry" data-id="${e.id}">Edit</button><button class="small no" data-action="del-entry" data-id="${e.id}">Delete</button>` : ''}</span></td></tr>`).join('');
+      }).join('');
+      return `<div class="week"><div class="week-head"><h3>Week of ${fmtDay(w)} · ${hrs(wt)} h</h3>
+        <span class="row-actions"><span class="muted">Due ${dueFor(w).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Lagos' })} WAT</span>
+        ${canSubmit ? `<button class="primary small" data-action="submit-week" data-week="${w}">Submit week</button>` : ''}</span></div>
+        <div class="tbl"><table><thead><tr><th>Time</th><th>Project</th><th colspan="2">What you did</th><th class="num">Hours</th><th>Status</th><th></th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+    }).join('');
+    const rowsHtml = dr.rows.map((r, i) => `<div class="trow">
+        <label class="f" for="r${i}-start">Start<input id="r${i}-start" type="time" step="900" data-row="${i}" data-field="start" value="${esc(r.start)}"></label>
+        <label class="f" for="r${i}-end">End<input id="r${i}-end" type="time" step="900" data-row="${i}" data-field="end" value="${esc(r.end)}"></label>
+        <label class="f" for="r${i}-project">Project or client<input id="r${i}-project" list="projects" data-row="${i}" data-field="project" value="${esc(r.project)}" placeholder="e.g. Alpha City"></label>
+        <label class="f task" for="r${i}-task">What you did<input id="r${i}-task" data-row="${i}" data-field="task" value="${esc(r.task)}" placeholder="e.g. Screened 6 candidate profiles for the ops role"></label>
+        <label class="f" for="r${i}-out">Outputs<input id="r${i}-out" type="number" min="0" step="1" data-row="${i}" data-field="outputs" value="${esc(r.outputs ?? '')}" placeholder="e.g. 6" title="How many things you produced: emails sent, calls made, profiles screened, documents"></label>
+        <div class="proof"><label class="f" for="r${i}-link">Proof of work<input id="r${i}-link" type="url" data-row="${i}" data-field="proofLink" value="${esc(r.proofLink)}" placeholder="Link to the work, document, email or Slack message"></label>
+          ${S.assets || S.demo ? `<label class="filebtn">Attach screenshot or file<input type="file" multiple data-upload="${i}" accept="image/*,application/pdf,video/*,text/plain,text/csv"></label>` : ''}
+          <span class="chips">${(r.proofFiles || []).map((f, j) => `<span class="chip">${esc(f.name)}<button type="button" data-action="del-file" data-row="${i}" data-file="${j}" aria-label="Remove ${esc(f.name)}">×</button></span>`).join('')}</span></div>
+        <span class="trow-h"><strong>${hrs(spanH(r.start, r.end))} h</strong>${dr.rows.length > 1 ? `<button type="button" class="small" data-action="del-row" data-row="${i}" aria-label="Remove task ${i + 1}">Remove</button>` : ''}</span>
+      </div>`).join('');
+    return `<div class="stats">
+      <div class="stat"><div class="k">This week</div><div class="v">${hrs(thisWeek)} h</div><div class="muted">of ${settings().hoursPerWeek} h expected</div></div>
+      <div class="stat"><div class="k">${fmtMonth(S.month)}</div><div class="v">${hrs(total)} h</div><div class="muted">logged</div></div>
+      <div class="stat"><div class="k">Approved</div><div class="v">${hrs(approved)} h</div><div class="muted">will be paid</div></div>
+    </div>
+    ${(() => { const mine = store().scores.filter(x => x.contractorId === me.id && x.month === S.month).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5); return mine.length ? `<section class="panel"><h2>Your feedback</h2>${mine.map(x => `<div class="flag"><span>${fmtDay(x.date)}</span><div>${scorePill(x).replace(/ <span class="pill p-(approved|warn)">(Recommended to approve|Review)<\/span>/, '')} <span class="muted">${hrs(x.hours)} h · ${x.outputs} outputs</span><div class="fb">${esc(x.feedback || '')}</div></div></div>`).join('')}</section>` : ''; })()}
+    <section class="panel gpt"><h2>Log with ChatGPT</h2><p class="muted" style="margin:0">At the end of the day, open ${settings().gptUrl ? `<a href="${esc(settings().gptUrl)}" target="_blank" rel="noopener">the Alpha City Daily Report GPT ↗</a>` : 'the Alpha City Daily Report GPT'} and say “log my day”. It reads your Gmail, Drive and Slack, asks you for screenshots of calls and WhatsApp, and sends the tasks here as drafts. The first time, it asks you to sign in with Google. You can also log by hand below.</p></section>
+    <section class="panel">
+      <div class="week-head"><h2>${dr.rows.some(r => r.id) ? 'Edit task' : 'Log your day'} · ${esc(me.name)}</h2>
+        <label class="f" for="d-date">Date<input id="d-date" type="date" required value="${esc(dr.date)}"></label></div>
+      <p class="muted" style="margin:0">Add one line for each task, with the time you started and finished. Hours are worked out from the times. Every task needs proof: a link, a screenshot or a file. For a call, meeting or follow-up, attach a screenshot of the call log, invite or message.${S.assets || S.demo ? ' You can also paste a screenshot (Ctrl+V) while you are on a task.' : ''}</p>${S.uploading ? '<p class="pill p-submitted">Uploading…</p>' : ''}
+      <form id="day-form" class="day-form">${rowsHtml}
+        <div class="week-head"><span class="row-actions">${dr.rows.some(r => r.id) ? '' : '<button type="button" data-action="add-row">+ Add another task</button>'}</span>
+          <span class="muted">Day total: <strong id="day-total" data-already="${already}">${hrs(dayTotal + already)} h</strong>${already ? ` (${hrs(already)} h already saved)` : ''}</span></div>
+        <span class="row-actions"><button class="primary" type="submit">${dr.rows.some(r => r.id) ? 'Save changes' : 'Save day'}</button>${dr.rows.some(r => r.id) ? '<button type="button" data-action="cancel-edit">Cancel</button>' : ''}</span>
+      </form>${projectsDatalist()}
+      <p class="muted" style="margin:0">Saved tasks stay as drafts until you press <strong>Submit week</strong>. Submit Monday–Sunday hours by Monday 12:00 WAT.</p>
+    </section>
+    <section class="panel"><h2>Your ${fmtMonth(S.month)} timesheet</h2>${weekHtml || '<div class="empty">No hours logged this month yet. Log your first day above.</div>'}</section>`;
+  }
+
+  function viewApprove() {
+    const es = monthEntries();
+    const pend = es.filter(e => e.status === 'submitted');
+    const approvedH = es.filter(e => e.status === 'approved').reduce((s, e) => s + Number(e.hours), 0);
+    const cost = es.filter(e => e.status === 'approved').reduce((s, e) => s + Number(e.hours) * Number(byId(e.contractorId)?.rate || 0), 0);
+    const groups = {}; pend.forEach(e => { const k = e.contractorId + '|' + weekStart(e.date); (groups[k] = groups[k] || []).push(e); });
+    const flags = computeFlags();
+    const html = Object.keys(groups).sort().map(k => {
+      const [cid, w] = k.split('|'); const c = byId(cid); const list = groups[k].sort((a, b) => (a.date + (a.start || '')).localeCompare(b.date + (b.start || '')));
+      const t = list.reduce((s, e) => s + Number(e.hours), 0); const nf = flags.filter(f => f.c.id === cid).length;
+      return `<div class="week"><div class="week-head"><h3>${esc(c?.name || 'Unknown')} · week of ${fmtDay(w)} · ${hrs(t)} h ${nf ? `<span class="pill p-warn">${nf} flag${nf > 1 ? 's' : ''}</span>` : ''}</h3>
+        <span class="row-actions">${list.some(e => scoreOf(e.contractorId, e.date)?.recommendation === 'approve') ? `<button class="ok small" data-action="approve-recommended" data-key="${k}">Approve recommended days</button>` : ''}<button class="ok small" data-action="approve-group" data-key="${k}">Approve all ${list.length}</button></span></div>
+        <div class="tbl"><table><thead><tr><th>Date</th><th>Time</th><th>Project</th><th>What they did</th><th class="num">Hours</th><th></th></tr></thead><tbody>
+        ${list.map((e, i) => `${i === 0 || list.at(i - 1).date !== e.date ? `<tr class="dayrow"><th colspan="4">${fmtDay(e.date)}${dow(e.date) % 6 === 0 ? ' <span class="pill p-warn">Weekend</span>' : ''} ${scorePill(scoreOf(e.contractorId, e.date))}${scoreOf(e.contractorId, e.date)?.feedback ? `<div class="muted fb">${esc(scoreOf(e.contractorId, e.date).feedback)}</div>` : ''}</th><th class="num">${hrs(list.filter(x => x.date === e.date).reduce((s, x) => s + Number(x.hours), 0))} h</th><th></th></tr>` : ''}<tr><td></td><td class="time">${timeLabel(e)}</td><td>${esc(e.project)}</td><td>${esc(e.task)}${proofHtml(e)}${metaHtml(e)}
+          ${S.rejecting === e.id ? `<form class="reject-box" data-reject="${e.id}"><input id="rj-${e.id}" required placeholder="Reason, e.g. split by project"><button class="no small" type="submit">Return</button><button class="small" type="button" data-action="cancel-reject">Cancel</button></form>` : ''}</td>
+          <td class="num">${hrs(e.hours)}</td><td><span class="row-actions"><button class="ok small" data-action="approve" data-id="${e.id}">Approve</button><button class="no small" data-action="reject" data-id="${e.id}">Return</button></span></td></tr>`).join('')}
+        </tbody></table></div></div>`;
+    }).join('');
+    return `<div class="stats">
+      <div class="stat"><div class="k">Awaiting approval</div><div class="v">${pend.length}</div><div class="muted">${hrs(pend.reduce((s, e) => s + Number(e.hours), 0))} h</div></div>
+      <div class="stat"><div class="k">Approved hours</div><div class="v">${hrs(approvedH)}</div><div class="muted">${fmtMonth(S.month)}</div></div>
+      <div class="stat"><div class="k">Approved pay</div><div class="v">${usd(cost)}</div><div class="muted">so far this month</div></div>
+      <div class="stat"><div class="k">Drafts not submitted</div><div class="v">${es.filter(e => e.status === 'draft').length}</div><div class="muted">entries</div></div>
+    </div>
+    <section class="panel"><div class="week-head"><h2>Approvals · ${fmtMonth(S.month)}</h2><span class="muted">Approve by Wednesday 17:00 WAT</span></div>
+      ${html || '<div class="empty">Nothing waiting for approval. Submitted weeks appear here.</div>'}</section>`;
+  }
+
+  function viewScores() {
+    const rows = store().scores.filter(x => x.month === S.month).sort((a, b) => b.date.localeCompare(a.date) || (byId(a.contractorId)?.name || '').localeCompare(byId(b.contractorId)?.name || ''));
+    const per = people().filter(c => c.active !== false).map(c => { const mine = rows.filter(x => x.contractorId === c.id && x.score != null); return { c, n: mine.length, avg: mine.length ? Math.round(mine.reduce((s, x) => s + x.score, 0) / mine.length * 10) / 10 : null, out: rows.filter(x => x.contractorId === c.id).reduce((s, x) => s + x.outputs, 0), h: rows.filter(x => x.contractorId === c.id).reduce((s, x) => s + x.hours, 0) }; });
+    return `<section class="panel"><div class="week-head"><h2>AI scores · ${fmtMonth(S.month)}</h2><span class="muted">Scored nightly at 23:30 WAT on output volume and output per hour</span></div>
+      <div class="tbl"><table><thead><tr><th>Contractor</th><th class="num">Days scored</th><th class="num">Hours</th><th class="num">Outputs</th><th class="num">Outputs / h</th><th class="num">Average score</th></tr></thead><tbody>
+      ${per.map(p => `<tr><td>${esc(p.c.name)}</td><td class="num">${p.n}</td><td class="num">${hrs(p.h)}</td><td class="num">${p.out}</td><td class="num">${p.h ? hrs(p.out / p.h) : '–'}</td><td class="num">${p.avg ?? '–'}</td></tr>`).join('')}
+      </tbody></table></div></section>
+      <section class="panel"><h2>Day by day</h2>${rows.length ? `<div class="tbl"><table><thead><tr><th>Date</th><th>Contractor</th><th class="num">Hours</th><th class="num">Outputs</th><th class="num">Per hour</th><th class="num">Team typical</th><th>Score</th><th>Feedback</th></tr></thead><tbody>
+      ${rows.map(x => `<tr><td>${fmtDay(x.date)}</td><td>${esc(byId(x.contractorId)?.name || '')}</td><td class="num">${hrs(x.hours)}</td><td class="num">${x.outputs}</td><td class="num">${hrs(x.outputsPerHour)}</td><td class="num">${x.teamOutputsPerHour ?? '–'}</td><td>${scorePill(x)}</td><td class="fb">${esc(x.feedback || x.baselineNote || '')}</td></tr>`).join('')}
+      </tbody></table></div>` : '<div class="empty">No scores yet this month. Days are scored every night once hours are logged.</div>'}
+      <details><summary class="muted">How scoring works</summary><p class="muted">Volume compares a day’s outputs with the team’s typical outputs per day over the last 14 days. Efficiency compares outputs per hour with the team’s typical rate. Each is banded 1–5 (1.5× typical or more = 5, 1.1× = 4, 0.8× = 3, 0.5× = 2, below = 1) and the score is their average. Days with less than 80% of hours backed by proof, more than 10 hours, or no outputs are marked for review. Scoring starts once the team has 3 logged days.</p></details></section>`;
+  }
+
+  function viewFlags(flags) {
+    const sp = { bad: 'p-rejected', warn: 'p-warn', info: 'p-submitted' };
+    return `<section class="panel"><div class="week-head"><h2>Flags · ${fmtMonth(S.month)}</h2><span class="muted">Checked live against the rollout plan rules</span></div>
+      ${flags.length ? `<div>${flags.map(f => `<div class="flag"><span class="pill ${sp[f.sev]}">${esc(f.type)}</span><div><strong>${esc(f.c.name)}</strong> · ${esc(f.text)}</div></div>`).join('')}</div>` : '<div class="empty">No flags this month.</div>'}
+      <details><summary class="muted">Rules</summary><p class="muted">Over cap: monthly hours above a cap you set. Long day: over 10 h in a day. Silent: 5+ working days with nothing logged. Late: week submitted after Monday 12:00 WAT. Weekend spike: over 25% of a week on Sat/Sun. Vague entry: task under 10 characters. Under-used: under half the expected ${settings().hoursPerWeek} h a week so far. Returned entries are left out.</p></details></section>`;
+  }
+
+  function payData(c) {
+    const es = monthEntries().filter(e => e.contractorId === c.id);
+    const appr = es.filter(e => e.status === 'approved');
+    const byProj = {}; appr.forEach(e => byProj[e.project] = (byProj[e.project] || 0) + Number(e.hours));
+    const h = appr.reduce((s, e) => s + Number(e.hours), 0);
+    const rate = Number(c.rate || 0), amount = h * rate;
+    const notApproved = es.filter(e => e.status === 'draft' || e.status === 'submitted').reduce((s, e) => s + Number(e.hours), 0);
+    return { c, byProj, h, rate, amount, notApproved, no: `AC-${S.month.replace('-', '')}-${String(c.code || 0).padStart(3, '0')}` };
+  }
+
+  function statementHtml(d) {
+    return `<div class="invoice"><div class="ih"><div><h2>Pay statement ${esc(d.no)}</h2><div class="muted">Period: ${fmtMonth(S.month)}</div></div>
+      <div><strong>${esc(d.c.name)}</strong><div class="muted">${esc(d.c.role || 'Contractor')} · Alpha City</div></div></div>
+      <div class="tbl"><table><thead><tr><th>Project</th><th class="num">Hours</th><th class="num">Rate (USD/h)</th><th class="num">Amount</th></tr></thead><tbody>
+      ${Object.entries(d.byProj).map(([p, h]) => `<tr><td>${esc(p)}</td><td class="num">${hrs(h)}</td><td class="num">${usd(d.rate)}</td><td class="num">${usd(h * d.rate)}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No approved hours.</td></tr>'}
+      </tbody><tfoot><tr><th>Total payable</th><td class="num">${hrs(d.h)} h</td><td></td><th class="num">${usd(d.amount)}</th></tr></tfoot></table></div>
+      ${d.notApproved ? `<p class="pill p-warn">${hrs(d.notApproved)} h this month are not yet approved and are not included.</p>` : ''}</div>`;
+  }
+
+  function viewPay() {
+    const rows = people().map(payData).filter(d => d.h || d.notApproved || d.c.active !== false);
+    const tot = rows.reduce((a, d) => ({ h: a.h + d.h, amt: a.amt + d.amount, sal: a.sal + Number(d.c.salary || 0) }), { h: 0, amt: 0, sal: 0 });
+    const sel = S.invoiceFor ? rows.find(d => d.c.id === S.invoiceFor) : null;
+    return `<section class="panel"><div class="week-head"><h2>Pay · ${fmtMonth(S.month)}</h2>
+      <span class="row-actions"><button data-action="csv" ${rows.length ? '' : 'disabled'}>Export month (CSV)</button></span></div>
+      <div class="tbl"><table><thead><tr><th>Statement</th><th>Contractor</th><th class="num">Approved h</th><th class="num">Rate</th><th class="num">Payable</th><th class="num">Old fixed salary</th><th>Pending</th><th></th></tr></thead><tbody>
+      ${rows.map(d => `<tr><td>${d.no}</td><td>${esc(d.c.name)}</td><td class="num">${hrs(d.h)}</td><td class="num">${d.rate ? usd(d.rate) : '<span class="pill p-warn">Missing</span>'}</td><td class="num">${usd(d.amount)}</td><td class="num">${d.c.salary ? usd(d.c.salary) : '–'}</td>
+        <td>${d.notApproved ? `<span class="pill p-warn">${hrs(d.notApproved)} h</span>` : '<span class="pill p-approved">None</span>'}</td>
+        <td><button class="small" data-action="show-invoice" data-id="${d.c.id}">View</button></td></tr>`).join('') || '<tr><td colspan="8" class="muted">No contractors yet.</td></tr>'}
+      </tbody>${rows.length ? `<tfoot><tr><th colspan="2">Total</th><td class="num">${hrs(tot.h)}</td><td></td><th class="num">${usd(tot.amt)}</th><td class="num">${usd(tot.sal)}</td><td colspan="2"></td></tr></tfoot>` : ''}</table></div>
+      <p class="muted" style="margin:0">Only approved hours are paid. Rate = monthly salary ÷ (${settings().hoursPerWeek} h × ${settings().weeksPerMonth} weeks). No tax is deducted.</p></section>
+      ${sel ? `<section class="panel">${statementHtml(sel)}<span class="row-actions"><button class="primary" data-action="dl-invoice" data-id="${sel.c.id}">Download statement</button><button data-action="close-invoice">Close</button></span></section>` : ''}`;
+  }
+
+  function viewTeam() {
+    const ed = S.editingContractor ? byId(S.editingContractor) : null;
+    const list = people(); const mh = monthlyHours();
+    return `<section class="panel"><div class="week-head"><h2>Team &amp; rates</h2><span class="muted">Only managers can see this page</span></div>
+      <div class="tbl"><table><thead><tr><th>#</th><th>Name</th><th>Role</th><th class="num">Old monthly salary</th><th class="num">Hourly rate</th><th class="num">Expected h / mo</th><th>Approver</th><th>Email</th><th>Status</th><th></th></tr></thead><tbody>
+      ${list.map(c => `<tr><td>${String(c.code || 0).padStart(3, '0')}</td><td>${esc(c.name)}</td><td>${esc(c.role)}</td><td class="num">${c.salary ? usd(c.salary) : '<span class="pill p-warn">Needed</span>'}</td><td class="num">${c.rate ? usd(c.rate) : '–'}</td><td class="num">${hrs(expectedOf(c))}</td><td>${esc(c.approver)}</td><td>${c.email ? esc(c.email) : '<span class="pill p-warn">Needed</span>'}</td>
+        <td>${c.active === false ? '<span class="pill p-draft">Inactive</span>' : '<span class="pill p-approved">Active</span>'}</td><td><button class="small" data-action="edit-contractor" data-id="${c.id}">Edit</button></td></tr>`).join('') || '<tr><td colspan="10" class="muted">No contractors yet.</td></tr>'}
+      </tbody></table></div>
+      <p class="muted" style="margin:0">Hourly rate = monthly salary ÷ (${settings().hoursPerWeek} h a week × ${settings().weeksPerMonth} weeks) = salary ÷ ${hrs(mh)} h. For example, $1,000 a month becomes ${usd(rateFor(1000))} an hour.</p></section>
+      <section class="panel"><h2>${ed ? 'Edit ' + esc(ed.name) : 'Add a contractor'}</h2>
+      <form id="contractor-form" class="form-grid">
+        <label class="f" for="c-name">Full name<input id="c-name" required value="${esc(ed?.name)}"></label>
+        <label class="f" for="c-role">Role<input id="c-role" value="${esc(ed?.role)}"></label>
+        <label class="f" for="c-email">Work email (Google sign-in)<input id="c-email" type="email" required value="${esc(ed?.email)}" placeholder="name@company.com"></label>
+        <label class="f" for="c-salary">Old monthly salary (USD)<input id="c-salary" type="number" min="0" step="1" value="${esc(ed?.salary)}"></label>
+        <label class="f" for="c-cap">Cap h / month (optional)<input id="c-cap" type="number" min="0" step="1" value="${esc(ed?.capHours || '')}"></label>
+        <label class="f" for="c-appr">Approver<input id="c-appr" value="${esc(ed?.approver ?? 'Mary Jane, Bradford')}"></label>
+        <label class="f" for="c-start">Start date<input id="c-start" type="date" value="${esc(ed?.startDate || '2026-11-02')}"></label>
+        ${ed ? `<label class="f" for="c-active">Status<select id="c-active"><option value="1"${ed.active !== false ? ' selected' : ''}>Active</option><option value="0"${ed.active === false ? ' selected' : ''}>Inactive</option></select></label>` : ''}
+        <span class="row-actions"><button class="primary" type="submit">${ed ? 'Save' : 'Add contractor'}</button>${ed ? '<button type="button" data-action="cancel-contractor">Cancel</button>' : ''}</span>
+      </form><p class="muted" style="margin:0">The hourly rate is worked out from the salary when you save.</p></section>
+      <section class="panel"><h2>Settings</h2><form id="settings-form" class="form-grid">
+        <label class="f" for="s-hpw">Expected hours a week<input id="s-hpw" type="number" min="1" max="80" step="1" value="${esc(settings().hoursPerWeek)}"></label>
+        <label class="f wide" for="s-gpt">Team GPT link (shown to contractors)<input id="s-gpt" type="url" value="${esc(settings().gptUrl || '')}" placeholder="https://chatgpt.com/g/..."></label>
+        <label class="f" for="s-wpm">Weeks a month<input id="s-wpm" type="number" min="4" max="5" step="0.01" value="${esc(settings().weeksPerMonth)}"></label>
+        <span class="row-actions"><button type="submit">Save and recalculate rates</button></span></form></section>`;
+  }
+
+  // ---------- actions ----------
+  document.addEventListener('click', async ev => {
+    const b = ev.target.closest('[data-action], #tabs button'); if (!b) return;
+    if (b.dataset.tab && !b.dataset.action) return setTab(b.dataset.tab);
+    const a = b.dataset.action, id = b.dataset.id;
+    if (a === 'tab') return setTab(b.dataset.tab);
+    if (a === 'signin') { try { await S.backend.signIn(); } catch (e) { toast('Sign-in was cancelled or blocked. Allow pop-ups and try again.'); } return; }
+    if (a === 'signout') { await S.backend?.signOut(); return; }
+    if (a === 'mode') { S.mode = b.dataset.mode; S.tab = S.mode === 'manager' ? 'approve' : 'log'; try { localStorage.setItem('tl-mode', S.mode); } catch (x) {} render(); return; }
+    if (a === 'demo-on') { loadDemo(); S.demo = true; S.mode = 'manager'; S.tab = 'approve'; if (Number(todayWAT().slice(8)) < 15) { S.month = addDays(todayWAT().slice(0, 7) + '-01', -1).slice(0, 7); $('#month').value = S.month; } render(); return; }
+    if (a === 'demo-off') { S.demo = false; S.mode = S.isManager ? 'manager' : 'contractor'; S.invoiceFor = null; S.editingEntry = null; S.editingContractor = null; S.me = S.isManager ? '' : (S.myCid || ''); S.month = todayWAT().slice(0, 7); $('#month').value = S.month; subscribeEntries(); render(); return; }
+    if (a === 'edit-entry') { const e = store().entries.find(x => x.id === id); if (!e) return; S.draft = { date: e.date, rows: [{ id: e.id, start: e.start || '', end: e.end || '', project: e.project || '', task: e.task || '', outputs: e.outputs ?? '', proofLink: e.proofLink || '', proofFiles: (e.proofFiles || []).slice() }] }; render(); $('#r0-start')?.focus(); return; }
+    if (a === 'del-file') { const r = ensureDraft().rows.at(Number(b.dataset.row)); if (r) r.proofFiles.splice(Number(b.dataset.file), 1); render(); return; }
+    if (a === 'cancel-edit') { S.draft = null; render(); return; }
+    if (a === 'add-row') { const d = ensureDraft(); d.rows.push(blankRow(d.rows.at(-1))); render(); $(`#r${d.rows.length - 1}-end`)?.focus(); return; }
+    if (a === 'del-row') { const d = ensureDraft(); d.rows.splice(Number(b.dataset.row), 1); render(); return; }
+    if (a === 'del-entry') { if (await remove('entries', id)) toast('Entry deleted'); return; }
+    if (a === 'submit-week') {
+      const w = b.dataset.week; const now = new Date().toISOString();
+      const list = monthEntries().filter(e => e.contractorId === S.me && e.status === 'draft' && weekStart(e.date) === w);
+      for (const e of list) await patch('entries', e.id, { status: 'submitted', submittedAt: now });
+      toast(`Submitted ${list.length} entr${list.length === 1 ? 'y' : 'ies'} for approval`); return;
+    }
+    if (a === 'approve') { if (await patch('entries', id, { status: 'approved', decidedAt: new Date().toISOString(), reason: '' })) toast('Approved'); return; }
+    if (a === 'approve-group') {
+      const [cid, w] = b.dataset.key.split('|'); const now = new Date().toISOString();
+      const list = monthEntries().filter(e => e.contractorId === cid && e.status === 'submitted' && weekStart(e.date) === w);
+      for (const e of list) await patch('entries', e.id, { status: 'approved', decidedAt: now, reason: '' });
+      toast(`Approved ${list.length} entries`); return;
+    }
+    if (a === 'approve-recommended') {
+      const [cid, w] = b.dataset.key.split('|'); const now = new Date().toISOString();
+      const list = monthEntries().filter(e => e.contractorId === cid && e.status === 'submitted' && weekStart(e.date) === w && scoreOf(cid, e.date)?.recommendation === 'approve');
+      for (const e of list) await patch('entries', e.id, { status: 'approved', decidedAt: now, reason: '' });
+      toast(`Approved ${list.length} entries on recommended days`); return;
+    }
+    if (a === 'reject') { S.rejecting = id; render(); $('#rj-' + id)?.focus(); return; }
+    if (a === 'cancel-reject') { S.rejecting = null; render(); return; }
+    if (a === 'show-invoice') { S.invoiceFor = id; render(); return; }
+    if (a === 'close-invoice') { S.invoiceFor = null; render(); return; }
+    if (a === 'edit-contractor') { S.editingContractor = id; render(); $('#c-name')?.focus(); return; }
+    if (a === 'cancel-contractor') { S.editingContractor = null; render(); return; }
+    if (a === 'dl-invoice') return downloadStatement(byId(id));
+    if (a === 'csv') return downloadCsv();
+  });
+
+  document.addEventListener('submit', async ev => {
+    ev.preventDefault(); const f = ev.target;
+    if (f.id === 'day-form') {
+      const dr = ensureDraft(); const date = dr.date;
+      if (!date) return toast('Choose a date.');
+      const rows = dr.rows.filter(r => r.start || r.end || r.task || r.proofLink || (r.proofFiles || []).length || (r.project && r.id));
+      if (S.uploading) return toast('Wait for the upload to finish.');
+      if (!rows.length) return toast('Add at least one task with a start and end time.');
+      for (const [i, r] of rows.entries()) {
+        if (!r.start || !r.end) return toast(`Task ${i + 1}: add a start and an end time.`);
+        if (toMin(r.end) <= toMin(r.start)) return toast(`Task ${i + 1}: the end time must be after the start time.`);
+        if (!r.project.trim() || !r.task.trim()) return toast(`Task ${i + 1}: add the project and what you did.`);
+        if (!/^\d+$/.test(String(r.outputs ?? '').trim())) return toast(`Task ${i + 1}: add how many outputs (a whole number, 0 if none).`);
+        if (r.proofLink && r.proofLink.trim() && !isUrl(r.proofLink)) return toast(`Task ${i + 1}: the proof link must start with https://`);
+        if (!hasProof(r)) return toast(`Task ${i + 1}: add proof of work (a link, screenshot or file).`);
+      }
+      const existing = store().entries.filter(e => e.contractorId === S.me && e.date === date && e.status !== 'rejected' && e.start && !rows.some(r => r.id === e.id));
+      const all = rows.map(r => ({ s: toMin(r.start), e: toMin(r.end), label: `${r.start}–${r.end}` })).concat(existing.map(e => ({ s: toMin(e.start), e: toMin(e.end), label: `${e.start}–${e.end} (already saved)` }))).sort((a, b) => a.s - b.s);
+      for (let i = 1; i < all.length; i++) if (all.at(i).s < all.at(i - 1).e) return toast(`Times overlap: ${all.at(i - 1).label} and ${all.at(i).label}.`);
+      for (const r of rows) {
+        const data = { contractorId: S.me, date, month: date.slice(0, 7), start: r.start, end: r.end, project: r.project.trim(), task: r.task.trim(), hours: spanH(r.start, r.end), outputs: Number(r.outputs), source: 'manual', proofLink: (r.proofLink || '').trim(), proofFiles: (r.proofFiles || []).map(f => ({ id: f.id || null, url: f.url || null, name: f.name, type: f.type })), status: 'draft', reason: '', submittedAt: null };
+        const ok = r.id ? await patch('entries', r.id, data) : await put('entries', uid(), { ...data, createdAt: new Date().toISOString() });
+        if (!ok) return;
+      }
+      toast(rows.some(r => r.id) ? 'Saved as a draft. Submit the week again.' : `Saved ${rows.length} task${rows.length > 1 ? 's' : ''} for ${fmtDay(date)}`);
+      const last = rows.at(-1); S.draft = { date, rows: [blankRow(last)] };
+      if (date.slice(0, 7) !== S.month) { S.month = date.slice(0, 7); $('#month').value = S.month; subscribeEntries(); }
+      render(); return;
+    }
+    if (f.dataset.reject) {
+      const id = f.dataset.reject; const reason = $('#rj-' + id).value.trim();
+      if (await patch('entries', id, { status: 'rejected', reason, decidedAt: new Date().toISOString() })) { S.rejecting = null; toast('Returned to contractor'); render(); }
+      return;
+    }
+    if (f.id === 'contractor-form') {
+      const ed = S.editingContractor ? byId(S.editingContractor) : null;
+      const id = ed ? ed.id : uid();
+      const code = ed ? ed.code : Math.max(0, ...store().roster.map(c => c.code || 0)) + 1;
+      const salary = Number($('#c-salary').value) || 0;
+      const email = $('#c-email').value.trim().toLowerCase();
+      const rosterRow = { email, name: $('#c-name').value.trim(), role: $('#c-role').value.trim(), approver: $('#c-appr').value.trim(), code, startDate: $('#c-start').value || null, active: ed ? $('#c-active').value === '1' : true };
+      const payRow = { salary, rate: rateFor(salary), capHours: Number($('#c-cap').value) || 0 };
+      if (ed && ed.email && ed.email !== email) await remove('members', ed.email);
+      if (await put('roster', id, rosterRow) && await put('pay', id, payRow) && (!email || await put('members', email, { contractorId: id }))) { S.editingContractor = null; toast(ed ? 'Saved' : `${rosterRow.name} added`); }
+      render(); return;
+    }
+    if (f.id === 'settings-form') {
+      const s = { hoursPerWeek: Number($('#s-hpw').value) || 50, weeksPerMonth: Number($('#s-wpm').value) || 4, gptUrl: /^https:\/\//.test($('#s-gpt').value.trim()) ? $('#s-gpt').value.trim() : '' };
+      if (S.demo) demoStore.settings = s; else if (!(await put('settings', 'main', s))) return;
+      if (!S.demo) S.settings = s;
+      for (const c of people()) if (c.salary) await patch('pay', c.id, { rate: rateFor(c.salary) });
+      toast('Settings saved and rates recalculated'); render();
+    }
+  });
+
+  $('#view').addEventListener('input', ev => {
+    const t = ev.target; if (t.id === 'd-date') { ensureDraft().date = t.value; return; }
+    if (t.dataset.row == null) return; const r = ensureDraft().rows.at(Number(t.dataset.row)); if (!r) return; r[t.dataset.field] = t.value;
+    if (t.dataset.field === 'start' || t.dataset.field === 'end') { const h = t.closest('.trow')?.querySelector('.trow-h strong'); if (h) h.textContent = hrs(spanH(r.start, r.end)) + ' h'; const dt = $('#day-total'); if (dt) dt.textContent = hrs(ensureDraft().rows.reduce((s, x) => s + spanH(x.start, x.end), 0) + Number(dt.dataset.already || 0)) + ' h'; }
+  });
+  $('#view').addEventListener('change', ev => { if (ev.target.id === 'd-date') render(); });
+  $('#view').addEventListener('focusout', ev => { if (S.pending && !(ev.relatedTarget && ev.relatedTarget.closest('form'))) { S.pending = false; setTimeout(render, 0); } });
+  $('#view').addEventListener('change', ev => { const t = ev.target; if (t.dataset && t.dataset.upload != null && t.files && t.files.length) { attachFiles(Number(t.dataset.upload), [...t.files]); t.value = ''; } });
+  document.addEventListener('paste', ev => {
+    const row = ev.target.closest && ev.target.closest('.trow'); if (!row || !(S.assets || S.demo)) return;
+    const files = [...(ev.clipboardData?.files || [])].filter(f => f.type.startsWith('image/')); if (!files.length) return;
+    ev.preventDefault(); const i = Number(row.querySelector('[data-row]')?.dataset.row || 0); attachFiles(i, files.map((f, k) => new File([f], `screenshot-${Date.now()}-${k}.png`, { type: f.type })));
+  });
+  $('#month').addEventListener('change', e => { if (!e.target.value) return; S.month = e.target.value; S.invoiceFor = null; subscribeEntries(); render(); });
+  $('#me').addEventListener('change', e => { S.me = e.target.value; S.draft = null; try { localStorage.setItem('tl-me', S.me); } catch (x) {} render(); });
+  function setTab(t) { S.tab = t; try { localStorage.setItem('tl-tab', t); } catch (x) {} render(); }
+
+  // ---------- downloads ----------
+  function save(filename, data, type) {
+    const url = URL.createObjectURL(new Blob([data], { type })); const link = document.createElement('a');
+    link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000); toast('Downloaded ' + filename);
+  }
+  function downloadStatement(c) {
+    const d = payData(c);
+    const doc = `<!doctype html><meta charset="utf-8"><title>${d.no}</title><style>body{font-family:Arial,sans-serif;max-width:720px;margin:40px auto;color:#18211c}table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px solid #ccc;text-align:left}.num{text-align:right}.pill{color:#9a5b00}</style><h1>Alpha City</h1>${statementHtml(d).replace(/class="pill p-warn"/g, 'class="pill"')}<p>Issued ${todayWAT()}.</p>`;
+    save(`${d.no}-${c.name.replace(/[^a-z0-9]+/gi, '-')}.html`, doc, 'text/html');
+  }
+  function downloadCsv() {
+    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const lines = [['Statement', 'Contractor', 'Role', 'Month', 'Approved hours', 'Rate USD/h', 'Payable USD', 'Old monthly salary USD', 'Hours not yet approved'].map(q).join(',')];
+    people().map(payData).filter(d => d.h || d.notApproved).forEach(d => lines.push([d.no, d.c.name, d.c.role, S.month, d.h, d.rate, d.amount.toFixed(2), d.c.salary || '', d.notApproved].map(q).join(',')));
+    save(`alpha-city-contractor-pay-${S.month}.csv`, lines.join('\n'), 'text/csv');
+  }
+
+  // ---------- sample preview (memory only) ----------
+  function loadDemo() {
+    const today = todayWAT(); const prevStart = addDays(today.slice(0, 7) + '-01', -1).slice(0, 7) + '-01';
+    demoStore.settings = { hoursPerWeek: 50, weeksPerMonth: 4 };
+    demoStore.roster = [
+      { id: 'd1', code: 1, name: 'Sample – Contractor A', role: 'Talent coordinator', approver: 'Line manager', active: true },
+      { id: 'd2', code: 2, name: 'Sample – Contractor B', role: 'Recruitment researcher', approver: 'Line manager', active: true },
+      { id: 'd3', code: 3, name: 'Sample – Contractor C', role: 'Ops analyst', approver: 'Line manager', active: true },
+    ];
+    demoStore.pay = [{ id: 'd1', salary: 900, rate: rateFor(900) }, { id: 'd2', salary: 700, rate: rateFor(700) }, { id: 'd3', salary: 1200, rate: rateFor(1200), capHours: 200 }];
+    const tasks = ['Screened candidate profiles for open roles', 'Weekly client check-in and notes', 'Updated talent pipeline tracker', 'Prepared onboarding packs'];
+    const es = []; let i = 0;
+    for (let d = prevStart; d <= today; d = addDays(d, 1)) {
+      const m = d.slice(0, 7); const wd = dow(d) % 6 !== 0; const ws = weekStart(d); const thisWeek = ws === weekStart(today);
+      const status = thisWeek ? 'draft' : (addDays(ws, 14) <= today ? 'approved' : 'submitted');
+      const sub = status === 'draft' ? null : new Date(dueFor(ws).getTime() - 3600e3).toISOString();
+      const add = (cid, start, end, project, task) => es.push({ id: 'e' + i++, contractorId: cid, date: d, month: m, start, end, hours: spanH(start, end), outputs: Math.max(0, Math.round(spanH(start, end) * (cid === 'd1' ? 2 : cid === 'd2' ? 0.7 : 1.3)) - (i % 5 === 0 ? 1 : 0)), source: i % 3 === 0 ? 'chatgpt' : 'manual', project, task, proofLink: (i % 7 === 3) ? '' : 'https://example.com/sample-proof', status, submittedAt: cid === 'd3' && status === 'submitted' ? new Date(dueFor(ws).getTime() + 7200e3).toISOString() : sub });
+      if (wd) { add('d1', '09:00', '12:30', 'Alpha City', tasks.at(i % 4)); add('d1', '13:30', '15:00', 'Internal ops', 'Weekly team check-in and notes'); add('d1', '15:00', '18:00', 'Alpha City', tasks.at((i + 1) % 4)); }
+      if (wd && dow(d) % 2 === 1 && d < addDays(today, -6)) add('d2', '10:00', '16:00', 'Alpha City', i % 5 ? tasks.at(i % 4) : 'calls');
+      if (wd || dow(d) === 6) { add('d3', '08:00', '12:00', 'Client reporting', tasks.at((i + 2) % 4)); add('d3', '13:00', dow(d) === 3 ? '20:00' : '18:00', 'Client reporting', tasks.at((i + 3) % 4)); }
+    }
+    demoStore.entries = es;
+    const days = {}; es.forEach(e => { const k = e.contractorId + '|' + e.date; days[k] = days[k] || { contractorId: e.contractorId, date: e.date, hours: 0, outputs: 0 }; days[k].hours += e.hours; days[k].outputs += e.outputs; });
+    const all = Object.values(days); const med = xs => { const s2 = xs.slice().sort((a, b) => a - b); return s2.length ? s2[Math.floor(s2.length / 2)] : 0; };
+    const mph = med(all.map(d => d.outputs / d.hours)), mpd = med(all.map(d => d.outputs));
+    const band = r => r >= 1.5 ? 5 : r >= 1.1 ? 4 : r >= 0.8 ? 3 : r >= 0.5 ? 2 : 1;
+    demoStore.scores = all.map(d => { const ph = Math.round(d.outputs / d.hours * 100) / 100; const sc = Math.round((band(d.outputs / mpd) + band(ph / mph)) / 2); return { ...d, month: d.date.slice(0, 7), outputsPerHour: ph, teamOutputsPerHour: Math.round(mph * 100) / 100, score: sc, recommendation: sc >= 3 && d.hours <= 10 ? 'approve' : 'review', feedback: `Sample: ${d.outputs} outputs in ${hrs(d.hours)} h (${ph}/h vs team ${Math.round(mph * 100) / 100}/h).` }; });
+  }
+
+  // ---------- boot ----------
+  S.month = todayWAT().slice(0, 7); $('#month').value = S.month;
+  render();
+
+  let unsubScores = null;
+  function subscribeEntries() {
+    if (!S.db) return; if (unsubEntries) unsubEntries(); if (unsubScores) unsubScores();
+    let sq = S.db.collection('scores').where('month', '==', S.month);
+    if (!S.isManager) sq = sq.where('contractorId', '==', S.myCid || '-');
+    unsubScores = sq.onSnapshot(snap => { S.scores = snap.docs.map(d => ({ id: d.id, ...d.data() })); softRender(); }, () => {});
+    const t = setTimeout(() => { if (!S.loaded) { S.loaded = true; render(); } }, 10000);
+    let q = S.db.collection('entries').where('month', '==', S.month);
+    if (!S.isManager) q = q.where('contractorId', '==', S.myCid || '-');
+    unsubEntries = q.onSnapshot(snap => {
+      clearTimeout(t); S.entries = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.loaded = true; softRender();
+    }, () => { clearTimeout(t); S.loaded = true; render(); });
+  }
+
+  let unsubs = [];
+  function startSession(user) {
+    unsubs.forEach(u => u && u()); unsubs = []; if (unsubEntries) { unsubEntries(); unsubEntries = null; }
+    S.authUser = user; S.roster = []; S.pay = []; S.entries = []; S.loaded = false; S.needSignIn = !user; S.notMember = false;
+    if (!user) { S.loaded = true; render(); return; }
+    S.backend.roleFor(user.email).then(role => {
+      S.isManager = role.isManager; S.myCid = role.contractorId;
+      if (!S.isManager && !S.myCid) { S.notMember = true; S.loaded = true; render(); return; }
+      let saved = ''; try { saved = localStorage.getItem('tl-mode') || ''; } catch (e) {}
+      S.mode = S.isManager ? (saved || 'manager') : 'contractor';
+      S.tab = S.mode === 'manager' ? S.tab : 'log';
+      if (!S.isManager) S.me = S.myCid;
+      const db = S.db, t = setTimeout(() => { S.loaded = true; render(); }, 10000);
+      unsubs.push(db.collection('roster').onSnapshot(snap => { clearTimeout(t); S.roster = snap.docs.map(d => ({ id: d.id, ...d.data() })); S.loaded = true; softRender(); }, () => { S.loaded = true; render(); }));
+      if (S.isManager) unsubs.push(db.collection('pay').onSnapshot(snap => { S.pay = snap.docs.map(d => ({ id: d.id, ...d.data() })); softRender(); }, () => {}));
+      unsubs.push(db.doc('settings/main').onSnapshot(s => { if (s.exists) S.settings = { hoursPerWeek: 50, weeksPerMonth: 4, ...s.data() }; softRender(); }, () => {}));
+      subscribeEntries();
+    });
+  }
+  function onBackend(backend) {
+    if (!backend) { S.offline = true; S.loaded = true; render(); return; }
+    S.backend = backend; S.db = backend.db; S.assets = backend.assets;
+    backend.onUser(user => startSession(user));
+  }
+  if (window.__backend !== undefined) onBackend(window.__backend);
+  else window.addEventListener('backend-ready', () => onBackend(window.__backend), { once: true });
+  setTimeout(() => { if (!S.backend && !S.offline) onBackend(null); }, 12000);
+})();
+</script>
+
+</html>

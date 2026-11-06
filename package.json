@@ -1,0 +1,11 @@
+{
+  "name": "alpha-city-hours",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "seed": "node scripts/seed.mjs",
+    "deploy": "firebase deploy"
+  },
+  "dependencies": { "firebase-admin": "12.1.0" },
+  "devDependencies": { "firebase-tools": "13.11.2" }
+}

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect ChatGPT · Alpha City Hours</title>
+<style>
+:root { --bg: #f6f7f4; --surface: #fff; --fg: #18211c; --muted: #5b675f; --accent: #1f6b4a; --line: #dbe0d8; --bad: #b3261e }
+@media (prefers-color-scheme: dark) { :root { --bg: #111613; --surface: #18201b; --fg: #e6ece7; --muted: #9aa89e; --accent: #5cc493; --line: #2c3730; --bad: #f2877e; color-scheme: dark } }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, "Segoe UI", sans-serif; display: grid; place-items: center; min-height: 100vh; padding: 16px; box-sizing: border-box }
+main { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 24px; max-width: 440px; width: 100%; display: grid; gap: 12px }
+h1 { font-size: 20px; margin: 0 } p { margin: 0; color: var(--muted) }
+button { font: inherit; font-weight: 600; border-radius: 8px; padding: 10px 16px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer }
+button:disabled { opacity: .5 } .err { color: var(--bad) }
+</style>
+<main>
+  <h1>Connect ChatGPT to Alpha City Hours</h1>
+  <p>Sign in with the Google account you use for the tracker. ChatGPT will then be able to send your daily reports to your timesheet. It can’t see pay or anyone else’s hours.</p>
+  <button id="go" disabled>Sign in with Google</button>
+  <p id="msg" role="status"></p>
+</main>
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+const msg = document.getElementById('msg'), go = document.getElementById('go');
+const params = new URLSearchParams(location.search);
+const config = await fetch('/__/firebase/init.json').then(r => r.json()).catch(() => null);
+if (!config || !params.get('redirect_uri')) { msg.textContent = 'Open this page from ChatGPT’s “Sign in” button.'; msg.className = 'err'; }
+else {
+  const auth = getAuth(initializeApp(config));
+  go.disabled = false;
+  go.onclick = async () => {
+    go.disabled = true; msg.className = ''; msg.textContent = 'Signing in…';
+    try {
+      const cred = await signInWithPopup(auth, new GoogleAuthProvider());
+      const res = await fetch('/api/oauth/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: await cred.user.getIdToken(), client_id: params.get('client_id'), redirect_uri: params.get('redirect_uri'), state: params.get('state') || '' }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Sign-in failed.');
+      msg.textContent = `Connected as ${data.name}. Returning to ChatGPT…`;
+      location.assign(data.redirect);
+    } catch (e) { msg.textContent = e.message || 'Sign-in failed. Try again.'; msg.className = 'err'; go.disabled = false; }
+  };
+}
+</script>
+</html>
